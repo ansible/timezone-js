@@ -55,16 +55,22 @@
     root.timezoneJS = timezoneJS;
   }
 
-  timezoneJS.VERSION = '0.4.11';
+  timezoneJS.VERSION = '0.4.13';
 
   // Grab the ajax library from global context.
   // This can be jQuery, Zepto or fleegix.
   // You can also specify your own transport mechanism by declaring
   // `timezoneJS.timezone.transport` to a `function`. More details will follow
-  var ajax_lib = root.$ || root.jQuery || root.Zepto
-    , fleegix = root.fleegix
+  if (typeof exports === 'object') {
+    // Node/CommonJS
+    var ajax_lib = require('jquery');
+  }
+  else{
+    var ajax_lib = root.$ || root.jQuery || root.Zepto
+    , fleegix = root.fleegix;
+  }
     // Declare constant list of days and months. Unfortunately this doesn't leave room for i18n due to the Olson data being in English itself
-    , DAYS = timezoneJS.Days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    var DAYS = timezoneJS.Days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
     , MONTHS = timezoneJS.Months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
     , SHORT_MONTHS = {}
     , SHORT_DAYS = {}
@@ -156,21 +162,6 @@
     if (!opts.url) throw new Error ('URL must be specified');
     if (!('async' in opts)) opts.async = true;
 
-    // Server-side (node)
-    // if node, require the file system module
-    if (typeof window === 'undefined' && typeof require === 'function') {
-      var nodefs = require('fs');
-      if (opts.async) {
-        // No point if there's no success handler
-        if (typeof opts.success !== 'function') return;
-        opts.error = opts.error || console.error;
-        return nodefs.readFile(opts.url, 'utf8', function(err, data) {
-          return err ? opts.error(err) : opts.success(data);
-        });
-      }
-      return nodefs.readFileSync(opts.url, 'utf8');
-    }
-
     // Client-side
     if ((!fleegix || typeof fleegix.xhr === 'undefined') && (!ajax_lib || typeof ajax_lib.ajax === 'undefined')) {
       throw new Error('Please use the Fleegix.js XHR module, jQuery ajax, Zepto ajax, or define your own transport mechanism for downloading zone files.');
@@ -259,10 +250,6 @@
         dt = new Date(arr[0], arr[1], arr[2], arr[3], arr[4], arr[5], arr[6]);
         is_dt_local = true;
         break;
-    }
-
-    if (isNaN(dt.getTime())) { // invalid date were passed
-      throw new Error('Invalid date');
     }
 
     this._useCache = false;
@@ -494,7 +481,7 @@
     // Allows different format following ISO8601 format:
     toString: function (format, tz) {
       // Default format is the same as toISOString
-      if (!format) format = 'yyyy-MM-ddTHH:mm:ss.SSS';
+      if (!format) format = 'yyyy-MM-dd HH:mm:ss';
       var result = format;
       var tzInfo = tz ? timezoneJS.timezone.getTzInfo(this.getTime(), tz) : this.getTimezoneInfo();
       var _this = this;
@@ -654,10 +641,6 @@
           // legacy zone we need the backward file for.
           _this.loadZoneFile('backward');
           return getZone(dt, tz);
-        } else if (t && t !== tz) {
-          //Load the linked zone found in the backward file
-          _this.lazyLoadZoneFiles(t);
-          return getZone(dt, t);
         }
         invalidTZError(t);
       }
@@ -1053,19 +1036,7 @@
     //Expose transport mechanism and allow overwrite.
     this.transport = _transport;
     this.getTzInfo = function (dt, tz, isUTC) {
-      this.lazyLoadZoneFiles(tz);
-      var z = getZone(dt, tz);
-      var off = +z[0];
-      //See if the offset needs adjustment.
-      var rule = getRule(dt, z, isUTC);
-      if (rule) {
-        off = getAdjustedOffset(off, rule[6]);
-      }
-      var abbr = getAbbreviation(z, rule);
-      return { tzOffset: off, tzAbbr: abbr };
-    };
-    //Lazy-load any zones not yet loaded.
-    this.lazyLoadZoneFiles = function(tz) {
+      //Lazy-load any zones not yet loaded.
       if (this.loadingScheme === this.loadingSchemes.LAZY_LOAD) {
         //Get the correct region for the zone.
         var zoneFile = getRegionForTimezone(tz);
@@ -1075,6 +1046,15 @@
         //Get the file and parse it -- use synchronous XHR.
         this.loadZoneFiles(zoneFile);
       }
+      var z = getZone(dt, tz);
+      var off = +z[0];
+      //See if the offset needs adjustment.
+      var rule = getRule(dt, z, isUTC);
+      if (rule) {
+        off = getAdjustedOffset(off, rule[6]);
+      }
+      var abbr = getAbbreviation(z, rule);
+      return { tzOffset: off, tzAbbr: abbr };
     };
   }();
 }).call(typeof window !== "undefined" ? window : this);
